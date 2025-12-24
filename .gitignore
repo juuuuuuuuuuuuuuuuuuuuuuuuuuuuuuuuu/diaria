@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Production
+dist/
+build/
+
+# Misc
+.DS_Store
+.env
+.npm
+*.log
+
+# Database (SQLite) - Usually we don't commit the production DB, but maybe the initial schema
+# We will ignore the running db files
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE
+.vscode/
+.idea/
