@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 
 const Ticket = ({ sales, total, ticketId, shiftType }) => {
   return (
-    <div className="hidden print:block font-mono text-black text-xs w-full max-w-[80mm]">
+    <div className="hidden print:block text-black text-xs w-full max-w-[80mm]" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
       <div className="text-center mb-4 border-b border-black pb-2">
         <h2 className="text-xl font-bold uppercase">INVERSIONES M y V</h2>
         <h2 className="text-lg font-bold uppercase">La Diaria</h2>
