@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
 import API_URL from '@/config/api';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Search, CheckCircle, XCircle, Clock, Trophy, Trash2 } from 'lucide-react';
 import axios from 'axios';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { useAuth } from '@/context/AuthContext';
 
 const VerifyTicketModal = ({ isOpen, onClose }) => {
+  const { user } = useAuth();
   const [ticketId, setTicketId] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -43,6 +45,9 @@ const VerifyTicketModal = ({ isOpen, onClose }) => {
       <DialogContent className="sm:max-w-md bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
         <DialogHeader>
           <DialogTitle className="text-center text-slate-900 dark:text-slate-100">Verificar Ticket</DialogTitle>
+          <DialogDescription className="text-center text-slate-500">
+             Ingrese el código del ticket para consultar su estado.
+          </DialogDescription>
         </DialogHeader>
         
         <div className="space-y-4 py-4">
@@ -147,8 +152,8 @@ const VerifyTicketModal = ({ isOpen, onClose }) => {
                   Verificar Otro Ticket
                 </Button>
 
-                {/* Delete/Annul Button */}
-                {result.shift.status === 'ABIERTO' && (
+                {/* Delete/Annul Button - Only for Admins/Logged Users */}
+                {user && result.shift.status === 'ABIERTO' && (
                   <div className="pt-4 border-t dark:border-slate-800">
                       <Button 
                         onClick={async () => {
