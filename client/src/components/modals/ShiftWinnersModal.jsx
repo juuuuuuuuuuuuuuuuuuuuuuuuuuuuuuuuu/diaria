@@ -69,9 +69,7 @@ const ShiftWinnersModal = ({ isOpen, onClose, shift, onUpdate }) => {
             // Allow render then print
             setTimeout(() => {
                 window.print();
-                // We keep ticketToPrint set to null or not. 
-                // Since it's hidden, it doesn't matter much, but clean up if preferred.
-            }, 100);
+            }, 500);
 
         } catch (error) {
             console.error("Error fetching ticket for print", error);
@@ -152,7 +150,7 @@ const ShiftWinnersModal = ({ isOpen, onClose, shift, onUpdate }) => {
 
             {/* Hidden Print Portal */}
             {ticketToPrint && createPortal(
-                <div className="print:block hidden fixed top-0 left-0 w-full h-full bg-white z-[9999]">
+                <div id="print-portal" className="print:block hidden fixed top-0 left-0 w-full h-full bg-white z-[9999]">
                     <Ticket 
                         sales={ticketToPrint.sales}
                         total={ticketToPrint.total}
