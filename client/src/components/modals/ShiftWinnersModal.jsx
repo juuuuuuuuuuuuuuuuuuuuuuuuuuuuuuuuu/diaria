@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import Ticket from '@/components/Ticket';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
-import { CheckCircle, Clock } from 'lucide-react';
+import { CheckCircle, Clock, Printer } from 'lucide-react';
 import axios from 'axios';
 import API_URL from '@/config/api';
 import { format } from 'date-fns';
@@ -12,6 +14,7 @@ const ShiftWinnersModal = ({ isOpen, onClose, shift, onUpdate }) => {
     const [winners, setWinners] = useState([]);
     const [loading, setLoading] = useState(false);
     const [processingId, setProcessingId] = useState(null);
+    const [ticketToPrint, setTicketToPrint] = useState(null);
 
     useEffect(() => {
         if (isOpen && shift) {
@@ -48,6 +51,31 @@ const ShiftWinnersModal = ({ isOpen, onClose, shift, onUpdate }) => {
             alert("Error al pagar ticket");
         } finally {
             setProcessingId(null);
+        }
+    };
+
+    const handlePrintCopy = async (ticketId) => {
+        try {
+            const res = await axios.get(`${API_URL}/tickets/${ticketId}/verify`);
+            const ticketData = res.data;
+            
+            setTicketToPrint({
+                sales: ticketData.sales,
+                total: ticketData.ticket.total,
+                ticketId: ticketData.ticket.id,
+                shiftType: ticketData.shift.type
+            });
+
+            // Allow render then print
+            setTimeout(() => {
+                window.print();
+                // We keep ticketToPrint set to null or not. 
+                // Since it's hidden, it doesn't matter much, but clean up if preferred.
+            }, 100);
+
+        } catch (error) {
+            console.error("Error fetching ticket for print", error);
+            alert("Error al cargar ticket para impresión");
         }
     };
 
@@ -95,21 +123,45 @@ const ShiftWinnersModal = ({ isOpen, onClose, shift, onUpdate }) => {
                                         </span>
                                     </div>
                                 ) : (
-                                    <Button 
-                                        onClick={() => handlePay(ticket.ticket_id)}
-                                        disabled={!!processingId}
-                                        size="sm"
-                                        className="w-full md:w-auto bg-green-600 hover:bg-green-700 text-white font-bold"
-                                    >
-                                        <DollarSignIcon className="w-4 h-4 mr-2" />
-                                        PAGAR PREMIO
-                                    </Button>
+                                    <div className="flex gap-2 w-full md:w-auto">
+                                        <Button 
+                                            onClick={() => handlePrintCopy(ticket.ticket_id)}
+                                            size="sm"
+                                            variant="outline"
+                                            className="flex-1 bg-white hover:bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700"
+                                            title="Imprimir Copia"
+                                        >
+                                            <Printer className="w-4 h-4" />
+                                        </Button>
+                                        <Button 
+                                            onClick={() => handlePay(ticket.ticket_id)}
+                                            disabled={!!processingId}
+                                            size="sm"
+                                            className="bg-green-600 hover:bg-green-700 text-white font-bold flex-1 md:flex-initial"
+                                        >
+                                            <DollarSignIcon className="w-4 h-4 mr-2" />
+                                            PAGAR
+                                        </Button>
+                                    </div>
                                 )}
                             </div>
                         ))
                     )}
                 </div>
             </DialogContent>
+
+            {/* Hidden Print Portal */}
+            {ticketToPrint && createPortal(
+                <div className="print:block hidden fixed top-0 left-0 w-full h-full bg-white z-[9999]">
+                    <Ticket 
+                        sales={ticketToPrint.sales}
+                        total={ticketToPrint.total}
+                        ticketId={ticketToPrint.ticketId}
+                        shiftType={ticketToPrint.shiftType}
+                    />
+                </div>,
+                document.body
+            )}
         </Dialog>
     );
 };
