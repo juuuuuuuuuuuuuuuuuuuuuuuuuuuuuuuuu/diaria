@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { CheckCircle, Clock } from 'lucide-react';
 import axios from 'axios';
 import API_URL from '@/config/api';
@@ -57,9 +58,9 @@ const ShiftWinnersModal = ({ isOpen, onClose, shift, onUpdate }) => {
                 <DialogHeader>
                     <DialogTitle className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
                         Ganadores: {shift?.type} - {shift?.date} 
-                        <Badge variant="outline" className="text-base bg-yellow-100 text-yellow-800 border-yellow-200">
+                        <span className="inline-flex items-center justify-center rounded-full px-2.5 py-0.5 text-base font-semibold bg-yellow-100 text-yellow-800 border border-yellow-200">
                              #{shift?.winning_number}
-                        </Badge>
+                        </span>
                     </DialogTitle>
                     <DialogDescription className="text-slate-500 dark:text-slate-400">
                         {winners.length} tickets premiados en este turno.
