@@ -287,11 +287,6 @@ router.post('/sales/bulk', async (req, res) => {
     if (!shift_id) return res.status(400).json({ error: "Shift ID Required" });
     if (!items || !Array.isArray(items) || items.length === 0) return res.status(400).json({ error: "No items provided" });
 
-    // Use a transaction object if LibSQL client supports it, usually `db.transaction('write')`.
-    // However, @libsql/client (HTTP) might use `db.batch()` for simple cases, or interactive transactions.
-    // For safety and simplicity with standard LibSQL client, we will try `db.transaction()`.
-    // If that fails in some serverless contexts, we might need a different approach, but standard client supports it.
-    
     try {
         const activeShift = await dbGet("SELECT * FROM shifts WHERE id = ?", [shift_id]);
         if (!activeShift || activeShift.status !== 'ABIERTO') {
@@ -317,18 +312,21 @@ router.post('/sales/bulk', async (req, res) => {
 
             if (errors.length > 0) throw { type: 'VALIDATION', errors };
 
-            // 2. Check Global Shift Limit
+            // 2. Check Global Shift Limit (Optimized: Read from shifts table)
             if (config.limit_total_shift) {
-                // Must query within transaction context if possible, or just standard query (snapshot isolation)
-                // With LibSQL `tx` object has `execute`.
-                const rsShiftStats = await tx.execute({ 
-                    sql: "SELECT SUM(amount) as total FROM sales WHERE shift_id = ?", 
-                    args: [shift_id] 
+                const currentShiftTotal = (activeShift.total_sales || 0);
+                
+                // Note: The activeShift might be slightly stale if high concurrency, 
+                // but we also rely on DB constraints or re-read in transaction?
+                // For strict correctness inside transaction:
+                const rsSync = await tx.execute({
+                    sql: "SELECT total_sales FROM shifts WHERE id = ?",
+                    args: [shift_id]
                 });
-                const currentShiftTotal = (rsShiftStats.rows[0]?.total) || 0;
+                const syncTotal = rsSync.rows[0]?.total_sales || 0;
 
-                if (currentShiftTotal + totalBatchAmount > config.limit_total_shift) {
-                    const available = config.limit_total_shift - currentShiftTotal;
+                if (syncTotal + totalBatchAmount > config.limit_total_shift) {
+                    const available = config.limit_total_shift - syncTotal;
                     throw { 
                         type: 'GLOBAL_LIMIT', 
                         error: `Límite Global del Turno excedido. Disponible: ${available}`
@@ -336,14 +334,14 @@ router.post('/sales/bulk', async (req, res) => {
                 }
             }
 
-            // 3. Check Per-Number Limits
+            // 3. Check Per-Number Limits (Optimized: Read from shift_counters)
              const failedItems = [];
              for (const [number, requestedAmount] of Object.entries(batchTotals)) {
                   const rsNumStats = await tx.execute({
-                      sql: "SELECT SUM(amount) as total FROM sales WHERE shift_id = ? AND number = ?",
+                      sql: "SELECT amount FROM shift_counters WHERE shift_id = ? AND number = ?",
                       args: [shift_id, number]
                   });
-                  const currentTotal = (rsNumStats.rows[0]?.total) || 0;
+                  const currentTotal = (rsNumStats.rows[0]?.amount) || 0;
                   const available = config.limit_per_number - currentTotal;
 
                   if (requestedAmount > available) {
@@ -354,23 +352,39 @@ router.post('/sales/bulk', async (req, res) => {
              if (failedItems.length > 0) throw { type: 'NUMBER_LIMIT', failedItems };
 
              // 4. Create Ticket ID (6 Digits)
-             // Simple random 6-digit number. Collision chance is low for daily volume, but present.
-             // For strict correctness, we'd loop and check, but let's keep it simple for now as per request.
              let ticketId = Math.floor(100000 + Math.random() * 900000).toString();
 
+            const now = getBusinessDateTime();
+            
+            // Insert Ticket
             await tx.execute({
                 sql: "INSERT INTO tickets (id, shift_id, total, created_at) VALUES (?, ?, ?, ?)",
-                args: [ticketId, shift_id, totalBatchAmount, getBusinessDateTime()]
+                args: [ticketId, shift_id, totalBatchAmount, now]
             });
 
-            // 5. Insert Sales
-            const now = getBusinessDateTime();
+            // 5. Insert Sales & Update Counters
             for (const item of items) {
+                 // Insert Sale
                  await tx.execute({
                      sql: "INSERT INTO sales (shift_id, ticket_id, number, amount, prize, created_at) VALUES (?, ?, ?, ?, ?, ?)",
                      args: [shift_id, ticketId, item.number, item.amount, item.amount * 80, now]
                  });
+
+                 // Update/Upsert Counter
+                 await tx.execute({
+                     sql: `INSERT INTO shift_counters (shift_id, number, amount, count) 
+                           VALUES (?, ?, ?, 1) 
+                           ON CONFLICT(shift_id, number) 
+                           DO UPDATE SET amount = amount + ?, count = count + 1`,
+                     args: [shift_id, item.number, item.amount, item.amount]
+                 });
             }
+
+            // Update Shift Totals
+            await tx.execute({
+                sql: "UPDATE shifts SET total_sales = total_sales + ?, ticket_count = ticket_count + 1 WHERE id = ?",
+                args: [totalBatchAmount, shift_id]
+            });
 
             await tx.commit();
             res.json({ success: true, count: items.length, ticketId });
@@ -544,7 +558,8 @@ router.get('/sales/usage', async (req, res) => {
     const { shift_id } = req.query;
     if (!shift_id) return res.json({});
     try {
-        const usage = await dbAll("SELECT number, SUM(amount) as total FROM sales WHERE shift_id = ? GROUP BY number", [shift_id]);
+        // Optimized: Read from shift_counters instead of aggregation
+        const usage = await dbAll("SELECT number, amount as total FROM shift_counters WHERE shift_id = ?", [shift_id]);
         const usageMap = {};
         usage.forEach(row => { usageMap[row.number] = row.total; });
         res.json(usageMap);

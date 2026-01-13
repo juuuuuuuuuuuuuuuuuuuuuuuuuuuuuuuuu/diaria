@@ -62,6 +62,59 @@ async function init() {
       )
     `);
 
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS shift_counters (
+        shift_id INTEGER,
+        number TEXT,
+        amount INTEGER DEFAULT 0,
+        count INTEGER DEFAULT 0,
+        PRIMARY KEY (shift_id, number)
+      )
+    `);
+
+    // Migration for shifts column (Ignore if exists)
+    try {
+        await db.execute("ALTER TABLE shifts ADD COLUMN total_sales INTEGER DEFAULT 0");
+    } catch(e) {}
+    
+    try {
+        await db.execute("ALTER TABLE shifts ADD COLUMN ticket_count INTEGER DEFAULT 0");
+    } catch(e) {}
+
+    // Backfill Migration (Optimized for Turso/LibSQL)
+    try {
+        const rs = await db.execute("SELECT count(*) as c FROM shift_counters");
+        // Access row safely depending on client version (rs.rows[0].c or rs.rows[0][0])
+        // Assuming rs.rows is array of objects from previous usage
+        const count = rs.rows[0]?.c || 0;
+        
+        if (count == 0) {
+            console.log("Migrating sales data to optimized counters...");
+            
+            // Backfill shift_counters
+            await db.execute(`
+                 INSERT INTO shift_counters (shift_id, number, amount, count) 
+                 SELECT shift_id, number, SUM(amount), COUNT(*) 
+                 FROM sales 
+                 GROUP BY shift_id, number
+            `);
+
+            // Backfill shifts totals
+            // Note: SQLite doesn't support UPDATE FROM syntax efficiently in all versions, using correlated subquery
+            await db.execute(`
+                UPDATE shifts 
+                SET total_sales = (
+                    SELECT IFNULL(SUM(amount), 0) 
+                    FROM sales 
+                    WHERE sales.shift_id = shifts.id
+                )
+            `);
+            console.log("Migration completed.");
+        }
+    } catch (e) {
+        console.error("Migration error (non-critical if table exists):", e);
+    }
+
     // Seed Config
     try {
         await db.execute("INSERT INTO config (id) VALUES (1)");
