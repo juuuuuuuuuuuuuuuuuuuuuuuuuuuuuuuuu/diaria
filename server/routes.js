@@ -144,7 +144,7 @@ router.get('/config', async (req, res) => {
 });
 
 router.put('/config', async (req, res) => {
-    const { limit_per_number, limit_total_shift, system_retention, shift_schedule, whatsapp_number } = req.body;
+    const { limit_per_number, limit_total_shift, system_retention, shift_schedule, whatsapp_number, prize_multiplier } = req.body;
     try {
         await dbRun(`
             UPDATE config SET 
@@ -152,9 +152,10 @@ router.put('/config', async (req, res) => {
             limit_total_shift = ?,
             system_retention = ?,
             shift_schedule = ?,
-            whatsapp_number = ?
+            whatsapp_number = ?,
+            prize_multiplier = ?
             WHERE id = 1
-        `, [limit_per_number, limit_total_shift, system_retention, JSON.stringify(shift_schedule), whatsapp_number]);
+        `, [limit_per_number, limit_total_shift, system_retention, JSON.stringify(shift_schedule), whatsapp_number, prize_multiplier || 70]);
         
         res.json({ success: true });
     } catch (e) {
@@ -400,7 +401,7 @@ router.post('/sales/bulk', async (req, res) => {
                  // Insert Sale
                  await tx.execute({
                      sql: "INSERT INTO sales (shift_id, ticket_id, number, amount, prize, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                     args: [shift_id, ticketId, item.number, item.amount, item.amount * 80, now]
+                     args: [shift_id, ticketId, item.number, item.amount, item.amount * (config.prize_multiplier || 70), now]
                  });
 
                  // Update/Upsert Counter

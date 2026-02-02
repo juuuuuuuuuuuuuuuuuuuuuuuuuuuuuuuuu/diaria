@@ -11,6 +11,7 @@ async function init() {
         limit_per_number INTEGER DEFAULT 350,
         limit_total_shift INTEGER DEFAULT 5000,
         system_retention INTEGER DEFAULT 5,
+        prize_multiplier INTEGER DEFAULT 70,
         shift_schedule TEXT DEFAULT '{"morning":"08:00-12:00","afternoon":"13:00-18:00","night":"19:00-22:00"}',
         whatsapp_number TEXT DEFAULT ''
       )
@@ -84,6 +85,11 @@ async function init() {
     // Migration for tickets paid_at
     try {
         await db.execute("ALTER TABLE tickets ADD COLUMN paid_at DATETIME");
+    } catch(e) {}
+
+    // Migration for config prize_multiplier
+    try {
+        await db.execute("ALTER TABLE config ADD COLUMN prize_multiplier INTEGER DEFAULT 70");
     } catch(e) {}
 
     // Backfill Migration (Optimized for Turso/LibSQL)

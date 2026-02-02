@@ -17,6 +17,7 @@ const ConfigModal = ({ isOpen, onClose }) => {
   const [configData, setConfigData] = useState({
     limit_per_number: 350,
     limit_total_shift: 5000,
+    prize_multiplier: 70,
     whatsapp_number: ''
   });
 
@@ -38,6 +39,7 @@ const ConfigModal = ({ isOpen, onClose }) => {
       setConfigData({
          limit_per_number: res.data.limit_per_number,
          limit_total_shift: res.data.limit_total_shift || 5000,
+         prize_multiplier: res.data.prize_multiplier || 70,
          whatsapp_number: res.data.whatsapp_number || ''
       });
     } catch (err) {
@@ -69,6 +71,7 @@ const ConfigModal = ({ isOpen, onClose }) => {
             ...current.data,
             limit_per_number: parseInt(configData.limit_per_number),
             limit_total_shift: parseInt(configData.limit_total_shift),
+            prize_multiplier: parseInt(configData.prize_multiplier),
             whatsapp_number: configData.whatsapp_number
        });
        onClose();

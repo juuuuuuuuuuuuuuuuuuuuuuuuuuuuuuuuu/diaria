@@ -22,6 +22,7 @@ const SalesModal = ({ isOpen, onClose, onSaleComplete, shiftId, shiftType }) => 
   const [limitItem, setLimitItem] = useState(null); 
   const [usage, setUsage] = useState({});
   const [limitPerNumber, setLimitPerNumber] = useState(0);
+  const [multiplier, setMultiplier] = useState(70);
   
   // Quick Sell State
   const [quickNumber, setQuickNumber] = useState('');
@@ -49,6 +50,7 @@ const SalesModal = ({ isOpen, onClose, onSaleComplete, shiftId, shiftType }) => 
           ]);
           
           setLimitPerNumber(resConfig.data.limit_per_number);
+          setMultiplier(resConfig.data.prize_multiplier || 70);
           setUsage(resUsage.data);
       } catch (err) {
           console.error("Error fetching usage", err);
@@ -78,6 +80,7 @@ const SalesModal = ({ isOpen, onClose, onSaleComplete, shiftId, shiftType }) => 
                 total={successData.total} 
                 ticketId={successData.id}
                 shiftType={shiftType} 
+                multiplier={multiplier}
             />
         </div>,
         document.body
@@ -262,6 +265,7 @@ const SalesModal = ({ isOpen, onClose, onSaleComplete, shiftId, shiftType }) => 
                 itemsInCart={cart} 
                 usage={usage}
                 limit={limitPerNumber}
+                multiplier={multiplier}
              />
           </div>
 
@@ -286,7 +290,7 @@ const SalesModal = ({ isOpen, onClose, onSaleComplete, shiftId, shiftType }) => 
                        </span>
                        <div>
                          <p className="text-sm font-medium text-slate-800 dark:text-slate-200">Apuesta: Lps. {item.amount}</p>
-                         <p className="text-xs text-green-600 dark:text-green-400">Premio: Lps. {item.amount * 80}</p>
+                         <p className="text-xs text-green-600 dark:text-green-400">Premio: Lps. {item.amount * multiplier}</p>
                        </div>
                     </div>
                     <Button size="icon" variant="ghost" className="h-8 w-8 text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20" onClick={() => removeFromCart(item.number)}>

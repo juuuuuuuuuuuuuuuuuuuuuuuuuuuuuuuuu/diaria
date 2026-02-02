@@ -1,7 +1,7 @@
 import React from 'react';
 import { format } from 'date-fns';
 
-const Ticket = ({ sales, total, ticketId, shiftType }) => {
+const Ticket = ({ sales, total, ticketId, shiftType, multiplier = 70 }) => {
   return (
     <div className="hidden print:block text-black text-xs w-full max-w-[80mm]" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
       <div className="text-center mb-4 border-b border-black pb-2">
@@ -24,7 +24,7 @@ const Ticket = ({ sales, total, ticketId, shiftType }) => {
            <div key={idx} className="grid grid-cols-3 text-lg items-center">
               <span className="font-bold text-left">{item.number}</span>
               <span className="text-right">Lps. {item.amount}</span>
-              <span className="text-right font-medium text-sm">Lps. {item.amount * 80}</span>
+              <span className="text-right font-medium text-sm">Lps. {item.prize ? item.prize : item.amount * multiplier}</span>
            </div>
         ))}
       </div>
