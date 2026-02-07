@@ -613,12 +613,38 @@ router.delete('/tickets/:id', authenticateToken, async (req, res) => {
         }
 
         // Transaction for delete
+        // Transaction for delete
         const tx = await db.transaction('write');
         try {
+             // 1. Get sales to restore availability
+             const salesToDelete = await tx.execute({
+                 sql: "SELECT number, amount, shift_id FROM sales WHERE ticket_id = ?",
+                 args: [id]
+             });
+             
+             // 2. Decrement Shift Counters
+             for (const sale of salesToDelete.rows) {
+                 await tx.execute({
+                     sql: `UPDATE shift_counters 
+                           SET amount = amount - ?, count = count - 1 
+                           WHERE shift_id = ? AND number = ?`,
+                     args: [sale.amount, sale.shift_id, sale.number]
+                 });
+             }
+
+             // 3. Delete Sales and Ticket
              await tx.execute({ sql: "DELETE FROM sales WHERE ticket_id = ?", args: [id] });
              await tx.execute({ sql: "DELETE FROM tickets WHERE id = ?", args: [id] });
+             
+             // 4. Update Shift Totals
+             const totalAmount = salesToDelete.rows.reduce((sum, s) => sum + s.amount, 0);
+             await tx.execute({
+                 sql: "UPDATE shifts SET total_sales = total_sales - ?, ticket_count = ticket_count - 1 WHERE id = ?",
+                 args: [totalAmount, ticket.shift_id]
+             });
+
              await tx.commit();
-             res.json({ success: true, message: "Ticket anulado correctamente" });
+             res.json({ success: true, message: "Ticket anulado y cupos restaurados." });
         } catch (inner) {
              await tx.rollback();
              throw inner;
