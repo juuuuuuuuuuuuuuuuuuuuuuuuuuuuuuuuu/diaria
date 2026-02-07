@@ -472,7 +472,7 @@ const Dashboard = () => {
         </Card>
 
         {reprintData && createPortal(
-            <div id="reprint-portal" className="print:block hidden fixed top-0 left-0 w-full h-full bg-white z-[9999]">
+            <div id="print-portal" className="print:block hidden fixed top-0 left-0 w-full h-full bg-white z-[9999]">
                 <Ticket 
                     sales={reprintData.sales} 
                     total={reprintData.ticket.total} 
