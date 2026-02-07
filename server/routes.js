@@ -298,15 +298,15 @@ router.get('/shifts/:id/simulate-winner', async (req, res) => {
 router.get('/shifts/:id/report', async (req, res) => {
     const { id } = req.params;
     try {
+        // Optimized: Read from shift_counters instead of aggregating sales
         const sales = await dbAll(`
-            SELECT number, SUM(amount) as total_amount 
-            FROM sales 
+            SELECT number, amount as total_amount 
+            FROM shift_counters 
             WHERE shift_id = ? 
-            GROUP BY number
         `, [id]);
 
         const shift = await dbGet("SELECT * FROM shifts WHERE id = ?", [id]);
-        const totalSold = sales.reduce((acc, curr) => acc + curr.total_amount, 0);
+        const totalSold = shift?.total_sales || 0; // Use cached total
 
         res.json({ shift, sales, totalSold });
     } catch (e) {
@@ -348,11 +348,6 @@ router.post('/sales/bulk', async (req, res) => {
 
             // 2. Check Global Shift Limit (Optimized: Read from shifts table)
             if (config.limit_total_shift) {
-                const currentShiftTotal = (activeShift.total_sales || 0);
-                
-                // Note: The activeShift might be slightly stale if high concurrency, 
-                // but we also rely on DB constraints or re-read in transaction?
-                // For strict correctness inside transaction:
                 const rsSync = await tx.execute({
                     sql: "SELECT total_sales FROM shifts WHERE id = ?",
                     args: [shift_id]
@@ -368,49 +363,69 @@ router.post('/sales/bulk', async (req, res) => {
                 }
             }
 
-            // 3. Check Per-Number Limits (Optimized: Read from shift_counters)
-             const failedItems = [];
-             for (const [number, requestedAmount] of Object.entries(batchTotals)) {
-                  const rsNumStats = await tx.execute({
-                      sql: "SELECT amount FROM shift_counters WHERE shift_id = ? AND number = ?",
-                      args: [shift_id, number]
-                  });
-                  const currentTotal = (rsNumStats.rows[0]?.amount) || 0;
-                  const available = config.limit_per_number - currentTotal;
+            // 3. Check Per-Number Limits (Optimized: Bulk Fetch)
+             const numbersToCheck = Object.keys(batchTotals);
+             if (numbersToCheck.length > 0) {
+                 const placeholders = numbersToCheck.map(() => '?').join(',');
+                 const rsNumStats = await tx.execute({
+                     sql: `SELECT number, amount FROM shift_counters WHERE shift_id = ? AND number IN (${placeholders})`,
+                     args: [shift_id, ...numbersToCheck]
+                 });
+                 
+                 const currentAmounts = {};
+                 rsNumStats.rows.forEach(row => {
+                     currentAmounts[row.number] = row.amount;
+                 });
 
-                  if (requestedAmount > available) {
-                      failedItems.push({ number, requested: requestedAmount, available: Math.max(0, available) });
-                  }
+                 const failedItems = [];
+                 for (const [number, requestedAmount] of Object.entries(batchTotals)) {
+                      const currentTotal = currentAmounts[number] || 0;
+                      const available = config.limit_per_number - currentTotal;
+
+                      if (requestedAmount > available) {
+                          failedItems.push({ number, requested: requestedAmount, available: Math.max(0, available) });
+                      }
+                 }
+                 if (failedItems.length > 0) throw { type: 'NUMBER_LIMIT', failedItems };
              }
-
-             if (failedItems.length > 0) throw { type: 'NUMBER_LIMIT', failedItems };
 
              // 4. Create Ticket ID (6 Digits)
              let ticketId = Math.floor(100000 + Math.random() * 900000).toString();
-
-            const now = getBusinessDateTime();
+             const now = getBusinessDateTime();
             
-            // Insert Ticket
-            await tx.execute({
-                sql: "INSERT INTO tickets (id, shift_id, total, created_at) VALUES (?, ?, ?, ?)",
+             // Insert Ticket
+             await tx.execute({
+                sql: "INSERT INTO tickets (id, shift_id, total, created_at, paid_at) VALUES (?, ?, ?, ?, NULL)",
                 args: [ticketId, shift_id, totalBatchAmount, now]
             });
 
-            // 5. Insert Sales & Update Counters
-            for (const item of items) {
-                 // Insert Sale
-                 await tx.execute({
-                     sql: "INSERT INTO sales (shift_id, ticket_id, number, amount, prize, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                     args: [shift_id, ticketId, item.number, item.amount, item.amount * (config.prize_multiplier || 70), now]
-                 });
+            // 5. Bulk Insert Sales
+            const prizeMultiplier = config.prize_multiplier || 70;
+            const chunkSize = 20; // Conservative chunk size for SQL vars
+            
+            for (let i = 0; i < items.length; i += chunkSize) {
+                const chunkItems = items.slice(i, i + chunkSize);
+                const chunkPlaceholders = chunkItems.map(() => "(?, ?, ?, ?, ?, ?)").join(", ");
+                const chunkArgs = [];
+                
+                chunkItems.forEach(item => {
+                    chunkArgs.push(shift_id, ticketId, item.number, item.amount, item.amount * prizeMultiplier, now);
+                });
+                
+                await tx.execute({
+                    sql: `INSERT INTO sales (shift_id, ticket_id, number, amount, prize, created_at) VALUES ${chunkPlaceholders}`,
+                    args: chunkArgs
+                });
+            }
 
-                 // Update/Upsert Counter
+            // 6. Update Shift Counters
+            for (const [number, amount] of Object.entries(batchTotals)) {
                  await tx.execute({
                      sql: `INSERT INTO shift_counters (shift_id, number, amount, count) 
                            VALUES (?, ?, ?, 1) 
                            ON CONFLICT(shift_id, number) 
                            DO UPDATE SET amount = amount + ?, count = count + 1`,
-                     args: [shift_id, item.number, item.amount, item.amount]
+                     args: [shift_id, number, amount, amount]
                  });
             }
 
@@ -538,8 +553,9 @@ router.get('/sales/stats', async (req, res) => {
     const { shift_id } = req.query;
     if (!shift_id) return res.json({ total: 0, count: 0 });
     try {
-        const stats = await dbGet("SELECT SUM(amount) as total, COUNT(*) as count FROM sales WHERE shift_id = ?", [shift_id]);
-        res.json({ total: stats?.total || 0, count: stats?.count || 0 });
+        // Optimized: Read from shifts table
+        const shift = await dbGet("SELECT total_sales, ticket_count FROM shifts WHERE id = ?", [shift_id]);
+        res.json({ total: shift?.total_sales || 0, count: shift?.ticket_count || 0 });
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
@@ -548,14 +564,14 @@ router.get('/sales/stats', async (req, res) => {
 // History (Simplified)
 router.get('/history/summary', async (req, res) => {
     try {
+        // Optimized: Use total_sales column and avoid joining huge sales table
         const query = `
             SELECT 
                 s.date,
-                SUM(sa.amount) as total_sales,
-                COUNT(sa.id) as total_tickets,
+                SUM(s.total_sales) as total_sales,
+                SUM(s.ticket_count) as total_tickets,
                 GROUP_CONCAT(s.type || ':' || IFNULL(s.winning_number, '-')) as winners_summary
             FROM shifts s
-            LEFT JOIN sales sa ON s.id = sa.shift_id
             GROUP BY s.date
             ORDER BY s.date DESC
             LIMIT 30

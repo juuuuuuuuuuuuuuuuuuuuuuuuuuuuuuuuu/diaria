@@ -73,6 +73,13 @@ async function init() {
       )
     `);
 
+    // --- INDEXES (Optimization) ---
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_sales_shift_id ON sales(shift_id)");
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_sales_ticket_id ON sales(ticket_id)");
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_sales_shift_number ON sales(shift_id, number)");
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_tickets_shift_id ON tickets(shift_id)");
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_shifts_date ON shifts(date)");
+
     // Migration for shifts column (Ignore if exists)
     try {
         await db.execute("ALTER TABLE shifts ADD COLUMN total_sales INTEGER DEFAULT 0");
