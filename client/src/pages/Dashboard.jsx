@@ -206,8 +206,8 @@ const Dashboard = () => {
       fetchData(null);
       alert("Turno de prueba eliminado correctamente.");
     } catch (err) {
-      console.error(err);
-      alert("Error al eliminar turno de prueba");
+      console.error("Delete shift error:", err.response?.data || err.message);
+      alert(err.response?.data?.error || "Error al eliminar turno de prueba (403: Prohibido)");
     }
   };
 

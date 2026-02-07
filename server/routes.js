@@ -610,7 +610,10 @@ router.delete('/shifts/:id', authenticateToken, async (req, res) => {
 
         // Security: Only allow deleting 'Prueba' shifts for now (unless we want full admin delete)
         if (shift.type !== 'Prueba') {
-            return res.status(403).json({ error: "Solo se pueden eliminar turnos de tipo 'Prueba'." });
+            return res.status(403).json({ 
+                error: `Acceso denegado. Solo se pueden eliminar turnos de tipo 'Prueba'. Este turno es de tipo: '${shift.type}'`,
+                debug: { type: shift.type, id }
+            });
         }
 
         const tx = await db.transaction('write');
