@@ -157,9 +157,75 @@ router.put('/config', async (req, res) => {
             WHERE id = 1
         `, [limit_per_number, limit_total_shift, system_retention, JSON.stringify(shift_schedule), whatsapp_number, prize_multiplier || 70]);
         
+        
         res.json({ success: true });
     } catch (e) {
         console.error(e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// --- DASHBOARD SUMMARY (Optimized Batch Fetch) ---
+router.get('/dashboard/summary', async (req, res) => {
+    try {
+        const today = getBusinessDate();
+        
+        // 1. Day Status
+        const shiftsRows = await dbAll("SELECT type, status, id FROM shifts WHERE date = ?", [today]);
+        const dayStatus = { 'Mañana': null, 'Tarde': null, 'Noche': null };
+        shiftsRows.forEach(s => { dayStatus[s.type] = s; });
+
+        // 2. Config (Cached on frontend, but good to have version check if needed, skipping for now as per plan to cache it separately)
+        
+        // 3. If there is an active shift (passed via query param or auto-detect)
+        let activeShiftId = req.query.shift_id;
+        let activeShiftData = null;
+        
+        // If no specific shift requested, try to find an OPEN one
+        if (!activeShiftId) {
+             const openShift = shiftsRows.find(s => s.status === 'ABIERTO');
+             if (openShift) {
+                 activeShiftId = openShift.id;
+             }
+        }
+
+        let stats = { total: 0, count: 0, clientCount: 0 };
+        let recentSales = [];
+
+        if (activeShiftId) {
+             // Parallel Fetch for Active Shift Data
+             const [shiftTotal, clientCount, recent] = await Promise.all([
+                 dbGet("SELECT total_sales, ticket_count FROM shifts WHERE id = ?", [activeShiftId]),
+                 dbGet("SELECT COUNT(*) as count FROM tickets WHERE shift_id = ?", [activeShiftId]),
+                 dbAll("SELECT * FROM sales WHERE shift_id = ? ORDER BY created_at DESC LIMIT 10", [activeShiftId])
+             ]);
+
+             if (shiftTotal) {
+                 stats.total = shiftTotal.total_sales || 0;
+                 stats.count = shiftTotal.ticket_count || 0;
+             }
+             if (clientCount) {
+                 stats.clientCount = clientCount.count || 0;
+             }
+             if (recent) {
+                 recentSales = recent;
+             }
+             
+             // Also get full shift details if we just discovered it
+             activeShiftData = shiftsRows.find(s => s.id == activeShiftId) || await dbGet("SELECT * FROM shifts WHERE id = ?", [activeShiftId]);
+        }
+
+        res.json({
+            date: today,
+            shifts: dayStatus,
+            activeShiftId: activeShiftId || null,
+            activeShiftData: activeShiftData || null,
+            stats,
+            recentSales
+        });
+
+    } catch (e) {
+        console.error("Dashboard Summary Error:", e);
         res.status(500).json({ error: e.message });
     }
 });

@@ -6,6 +6,7 @@ import Config from '@/pages/Config';
 import History from '@/pages/History';
 import Login from '@/pages/Login';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { ConfigProvider } from '@/context/ConfigContext';
 
 const ProtectedRoute = () => {
   const { user, loading } = useAuth();
@@ -18,6 +19,7 @@ const ProtectedRoute = () => {
 function App() {
   return (
     <AuthProvider>
+      <ConfigProvider>
       <Routes>
         <Route path="/login" element={<Login />} />
         
@@ -30,6 +32,7 @@ function App() {
           </Route>
         </Route>
       </Routes>
+      </ConfigProvider>
     </AuthProvider>
   );
 }

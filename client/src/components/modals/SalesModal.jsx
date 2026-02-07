@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import API_URL from '@/config/api';
+import { useConfig } from '@/context/ConfigContext';
 import { Button } from '@/components/ui/button';
 import { createPortal } from 'react-dom';
 // Removing unused Dialog imports if we are using manual div, or keeping if needed for other modals
@@ -16,13 +17,12 @@ const SalesModal = ({ isOpen, onClose, onSaleComplete, shiftId, shiftType }) => 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successData, setSuccessData] = useState(null); 
+  const { config } = useConfig();
   
   // Limit & Usage State
   const [limitModalOpen, setLimitModalOpen] = useState(false);
   const [limitItem, setLimitItem] = useState(null); 
   const [usage, setUsage] = useState({});
-  const [limitPerNumber, setLimitPerNumber] = useState(0);
-  const [multiplier, setMultiplier] = useState(70);
   
   // Quick Sell State
   const [quickNumber, setQuickNumber] = useState('');
@@ -44,13 +44,8 @@ const SalesModal = ({ isOpen, onClose, onSaleComplete, shiftId, shiftType }) => 
 
   const fetchUsageData = async () => {
       try {
-          const [resConfig, resUsage] = await Promise.all([
-             axios.get(`${API_URL}/config`),
-             axios.get(`${API_URL}/sales/usage?shift_id=${shiftId}`)
-          ]);
-          
-          setLimitPerNumber(resConfig.data.limit_per_number);
-          setMultiplier(resConfig.data.prize_multiplier || 70);
+          // Optimized: Only fetch usage, config is from context
+          const resUsage = await axios.get(`${API_URL}/sales/usage?shift_id=${shiftId}`);
           setUsage(resUsage.data);
       } catch (err) {
           console.error("Error fetching usage", err);
@@ -80,7 +75,7 @@ const SalesModal = ({ isOpen, onClose, onSaleComplete, shiftId, shiftType }) => 
                 total={successData.total} 
                 ticketId={successData.id}
                 shiftType={shiftType} 
-                multiplier={multiplier}
+                multiplier={config?.prize_multiplier || 70}
             />
         </div>,
         document.body
@@ -187,8 +182,9 @@ const SalesModal = ({ isOpen, onClose, onSaleComplete, shiftId, shiftType }) => 
 
     // Check availability (optional UI-side check, backend will catch it anyway)
     const sold = usage[num] || 0;
-    if (limitPerNumber > 0 && (sold + amt > limitPerNumber)) {
-        setError(`Límite excedido para el ${num}. Disponible: ${limitPerNumber - sold}`);
+    const limit = config?.limit_per_number || 0;
+    if (limit > 0 && (sold + amt > limit)) {
+        setError(`Límite excedido para el ${num}. Disponible: ${limit - sold}`);
         return;
     }
 
@@ -264,8 +260,8 @@ const SalesModal = ({ isOpen, onClose, onSaleComplete, shiftId, shiftType }) => 
                 onAddToCart={handleAddToCart} 
                 itemsInCart={cart} 
                 usage={usage}
-                limit={limitPerNumber}
-                multiplier={multiplier}
+                limit={config?.limit_per_number || 0}
+                multiplier={config?.prize_multiplier || 70}
              />
           </div>
 
@@ -290,7 +286,7 @@ const SalesModal = ({ isOpen, onClose, onSaleComplete, shiftId, shiftType }) => 
                        </span>
                        <div>
                          <p className="text-sm font-medium text-slate-800 dark:text-slate-200">Apuesta: Lps. {item.amount}</p>
-                         <p className="text-xs text-green-600 dark:text-green-400">Premio: Lps. {item.amount * multiplier}</p>
+                         <p className="text-xs text-green-600 dark:text-green-400">Premio: Lps. {item.amount * (config?.prize_multiplier || 70)}</p>
                        </div>
                     </div>
                     <Button size="icon" variant="ghost" className="h-8 w-8 text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20" onClick={() => removeFromCart(item.number)}>

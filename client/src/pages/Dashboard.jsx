@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import API_URL from '@/config/api'; // Added import
+import API_URL from '@/config/api'; 
+import { useConfig } from '@/context/ConfigContext';
 
 // ... imports
 
@@ -37,7 +38,7 @@ const Dashboard = () => {
   
   const [stats, setStats] = useState({ total: 0, count: 0 }); // count now represents Clients
   const [recentSales, setRecentSales] = useState([]);
-  const [config, setConfig] = useState(null);
+  const { config } = useConfig();
   
   // Modals
   const [winnerModalOpen, setWinnerModalOpen] = useState(false);
@@ -72,39 +73,29 @@ const Dashboard = () => {
 
   const fetchData = async (currentId = activeShift?.id) => {
     try {
-      // 1. Always get day status to update buttons
-      const resStatus = await axios.get(`${API_URL}/shifts/day-status`);
-      setShiftsStatus(resStatus.data.shifts);
+      // Optimized: Fetch all dashboard data in one go
+      const url = currentId ? `${API_URL}/dashboard/summary?shift_id=${currentId}` : `${API_URL}/dashboard/summary`;
+      const res = await axios.get(url);
+      const data = res.data;
 
-      // 2. If we have an active shift selected, refresh its stats
-      if (currentId) {
-          const [resStats, resClients, resSales] = await Promise.all([
-             axios.get(`${API_URL}/sales/stats?shift_id=${currentId}`),
-             axios.get(`${API_URL}/stats/clients?shift_id=${currentId}`),
-             axios.get(`${API_URL}/sales/recent?shift_id=${currentId}`)
-          ]);
-          
-          setStats({
-              ...resStats.data,
-              clientCount: resClients.data.count
-          });
-          setRecentSales(resSales.data);
+      setShiftsStatus(data.shifts);
+
+      if (data.activeShiftData) {
+         // Update active shift if explicitly requested OR if we don't have one and backend found one (auto-select)
+         if (currentId || !activeShift) {
+             setActiveShift(data.activeShiftData);
+         }
+         
+         setStats(data.stats);
+         setRecentSales(data.recentSales);
       } else {
-          // Attempt to auto-select the first available OPEN shift if none selected
-          const shifts = resStatus.data.shifts;
-          const openShiftType = ['Mañana', 'Tarde', 'Noche'].find(t => shifts[t]?.status === 'ABIERTO');
-          if (openShiftType && !activeShift) {
-             const s = shifts[openShiftType];
-             setActiveShift(s);
-          } else if (!activeShift) {
+         // No active shift data returned
+         if (!activeShift) {
              setStats({ total: 0, count: 0, clientCount: 0 });
              setRecentSales([]);
-          }
+         }
       }
-
-      const resConfig = await axios.get(`${API_URL}/config`);
-      setConfig(resConfig.data);
-
+      
     } catch (error) {
       console.error("Error fetching dashboard data", error);
     }
