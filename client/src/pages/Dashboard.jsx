@@ -167,7 +167,7 @@ const Dashboard = () => {
            // Clear after print
            setReprintData(null);
            setReprintingId(null);
-        }, 300);
+        }, 1000);
       }
     } catch (err) {
       console.error("Error reprinting ticket", err);
@@ -198,7 +198,10 @@ const Dashboard = () => {
     if (!window.confirm("¿Estás seguro de ELIMINAR este turno de prueba? Se borrarán todas las ventas y tickets asociados.")) return;
 
     try {
-      await axios.delete(`${API_URL}/shifts/${activeShift.id}`);
+      const token = localStorage.getItem('token');
+      await axios.delete(`${API_URL}/shifts/${activeShift.id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+      });
       setActiveShift(null);
       fetchData(null);
       alert("Turno de prueba eliminado correctamente.");

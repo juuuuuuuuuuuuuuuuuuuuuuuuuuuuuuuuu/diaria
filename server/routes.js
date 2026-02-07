@@ -601,6 +601,37 @@ router.get('/tickets/:id/verify', async (req, res) => {
     }
 });
 
+// DELETE Shift (Used for Test Shifts)
+router.delete('/shifts/:id', authenticateToken, async (req, res) => {
+    const { id } = req.params;
+    try {
+        const shift = await dbGet("SELECT * FROM shifts WHERE id = ?", [id]);
+        if (!shift) return res.status(404).json({ error: "Turno no encontrado" });
+
+        // Security: Only allow deleting 'Prueba' shifts for now (unless we want full admin delete)
+        if (shift.type !== 'Prueba') {
+            return res.status(403).json({ error: "Solo se pueden eliminar turnos de tipo 'Prueba'." });
+        }
+
+        const tx = await db.transaction('write');
+        try {
+            // Delete associated data
+            await tx.execute({ sql: "DELETE FROM sales WHERE shift_id = ?", args: [id] });
+            await tx.execute({ sql: "DELETE FROM tickets WHERE shift_id = ?", args: [id] });
+            await tx.execute({ sql: "DELETE FROM shift_counters WHERE shift_id = ?", args: [id] });
+            await tx.execute({ sql: "DELETE FROM shifts WHERE id = ?", args: [id] });
+            
+            await tx.commit();
+            res.json({ success: true, message: "Turno de prueba eliminado correctamente." });
+        } catch (inner) {
+            await tx.rollback();
+            throw inner;
+        }
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 router.delete('/tickets/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
     try {
