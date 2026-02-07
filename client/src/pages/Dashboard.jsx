@@ -194,7 +194,7 @@ const Dashboard = () => {
   };
 
   const handleDeleteTestShift = async () => {
-    if (!activeShift || !activeShift.is_test) return;
+    if (!activeShift || (activeShift.type !== 'Prueba' && !activeShift.is_test)) return;
     if (!window.confirm("¿Estás seguro de ELIMINAR este turno de prueba? Se borrarán todas las ventas y tickets asociados.")) return;
 
     try {
@@ -290,7 +290,7 @@ const Dashboard = () => {
              </p>
            </div>
            
-           {activeShift?.is_test && (
+           {(activeShift?.is_test || activeShift?.type === 'Prueba') && (
                <Button 
                    size="sm" 
                    variant="destructive" 
