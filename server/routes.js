@@ -307,9 +307,12 @@ router.post('/shifts/open', async (req, res) => {
         }
 
         // Check max shifts
-        const shiftsToday = await dbGet("SELECT COUNT(*) as count FROM shifts WHERE date = ?", [today]);
-        if (shiftsToday.count >= 3) {
-            return res.status(400).json({ error: "Límite de turnos diarios (3) alcanzado." });
+        // Check max shifts (Excluding Test Shifts)
+        if (type !== 'Prueba') {
+            const shiftsToday = await dbGet("SELECT COUNT(*) as count FROM shifts WHERE date = ? AND type != 'Prueba'", [today]);
+            if (shiftsToday.count >= 3) {
+                return res.status(400).json({ error: "Límite de turnos diarios (3) alcanzado." });
+            }
         }
 
         const info = await dbRun("INSERT INTO shifts (type, date, status, created_at) VALUES (?, ?, 'ABIERTO', ?)", [type, today, getBusinessDateTime()]);
