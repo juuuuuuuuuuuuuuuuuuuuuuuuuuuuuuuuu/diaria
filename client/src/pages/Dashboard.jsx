@@ -9,7 +9,7 @@ import { useConfig } from '@/context/ConfigContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 // Removed invalid Badge import from lucide-react
-import { DollarSign, Ticket, Award, Users, Lock, ShoppingCart, Moon, Sun, Settings, History, Trash2, Beaker, Printer } from 'lucide-react'; 
+import { DollarSign, Ticket as TicketIcon, Award, Users, Lock, ShoppingCart, Moon, Sun, Settings, History, Trash2, Beaker, Printer } from 'lucide-react'; 
 import { cn } from '@/lib/utils';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -268,7 +268,7 @@ const Dashboard = () => {
                    : "bg-blue-100 dark:bg-blue-900/40" 
                : "bg-slate-200 dark:bg-slate-800"
            )}>
-             {activeShift?.is_test ? <Beaker className="w-5 h-5 text-yellow-600 dark:text-yellow-400" /> : <Ticket className={cn("w-5 h-5", activeShift ? "text-blue-600 dark:text-blue-400" : "text-slate-500 dark:text-slate-400")} />}
+             {activeShift?.is_test ? <Beaker className="w-5 h-5 text-yellow-600 dark:text-yellow-400" /> : <TicketIcon className={cn("w-5 h-5", activeShift ? "text-blue-600 dark:text-blue-400" : "text-slate-500 dark:text-slate-400")} />}
            </div>
            <div className="flex-1">
              <h4 className="font-bold flex items-center gap-2">
@@ -302,7 +302,7 @@ const Dashboard = () => {
            <KPICard 
              title="Números Vendidos" 
              value={stats.count || 0} 
-             icon={Ticket} 
+             icon={TicketIcon} 
              colorClass={{ bg: 'bg-cyan-100', text: 'text-cyan-600' }} 
            />
            <KPICard 
@@ -337,7 +337,7 @@ const Dashboard = () => {
 
            <div className="grid grid-cols-2 gap-3">
               <Button onClick={() => setIsVerifyOpen(true)} className="h-12 text-lg bg-blue-600 hover:bg-blue-700 text-white">
-                 <Ticket className="w-5 h-5 mr-2" /> Verificar
+                 <TicketIcon className="w-5 h-5 mr-2" /> Verificar
               </Button>
               <div className="flex gap-2">
                   <Button onClick={() => navigate('/history')} variant="outline" className="h-12 flex-1 text-lg border-2 dark:border-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
