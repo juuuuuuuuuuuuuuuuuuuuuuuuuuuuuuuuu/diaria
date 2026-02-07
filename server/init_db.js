@@ -191,9 +191,106 @@ async function init() {
         }
     } catch (e) {
         console.error("Test Shift Migration Failed:", e);
-        // If it failed, we might be in a bad state if not transactional. 
-        // But LibSQL via HTTP might not support multi-statement transactions in one go easily without the transaction helper.
-        // Assuming the user runs this local node script which uses local db or http client.
+    }
+
+    // --- MIGRATION: Fix Broken FKs (Sales/Tickets -> shifts_old) ---
+    try {
+        // Function to check table existence
+        const tableExists = async (name) => {
+             const rs = await db.execute({ sql: "SELECT name FROM sqlite_master WHERE type='table' AND name=?", args: [name] });
+             return rs.rows.length > 0;
+        };
+
+        const salesBroken = await (async () => {
+             const fkList = await db.execute("PRAGMA foreign_key_list('sales')");
+             for (const row of fkList.rows) {
+                 if (row.table === 'shifts_old' || (Array.isArray(row) && row.includes('shifts_old'))) return true;
+             }
+             return false;
+        })();
+        
+        // Also check if we are in a mid-migration state (old_fix tables exist)
+        const ticketsFixExists = await tableExists('tickets_old_fix');
+        const salesFixExists = await tableExists('sales_old_fix');
+
+        if (salesBroken || ticketsFixExists || salesFixExists) {
+            console.log("Detected broken FKs or incomplete repair. Repairing...");
+            
+            // Disable FKs just in case, though order should handle it
+            await db.execute("PRAGMA foreign_keys = OFF");
+
+            await db.transaction('write');
+            
+            // 1. Rename BOTH first to free up names (if not already renamed)
+            if (!ticketsFixExists) {
+                 console.log("Renaming tickets to tickets_old_fix...");
+                 await db.execute("ALTER TABLE tickets RENAME TO tickets_old_fix");
+            }
+            if (!salesFixExists) {
+                 console.log("Renaming sales to sales_old_fix...");
+                 await db.execute("ALTER TABLE sales RENAME TO sales_old_fix");
+            }
+
+            // 2. Create NEW tables
+            console.log("Creating new tables...");
+            await db.execute(`
+              CREATE TABLE IF NOT EXISTS tickets (
+                id TEXT PRIMARY KEY,
+                shift_id INTEGER NOT NULL,
+                total INTEGER NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                paid_at DATETIME,
+                FOREIGN KEY(shift_id) REFERENCES shifts(id)
+              )
+            `);
+             await db.execute(`
+              CREATE TABLE IF NOT EXISTS sales (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                shift_id INTEGER NOT NULL,
+                ticket_id TEXT,
+                number TEXT NOT NULL CHECK(length(number) = 2),
+                amount INTEGER NOT NULL CHECK(amount > 0),
+                prize INTEGER NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(shift_id) REFERENCES shifts(id),
+                FOREIGN KEY(ticket_id) REFERENCES tickets(id)
+              )
+            `);
+            
+            // 3. Copy Data
+            console.log("Copying tickets data...");
+            await db.execute(`
+                INSERT OR IGNORE INTO tickets (id, shift_id, total, created_at, paid_at)
+                SELECT id, shift_id, total, created_at, paid_at 
+                FROM tickets_old_fix
+                WHERE shift_id IN (SELECT id FROM shifts)
+            `);
+            
+            console.log("Copying sales data...");
+            await db.execute(`
+                INSERT OR IGNORE INTO sales (id, shift_id, ticket_id, number, amount, prize, created_at)
+                SELECT id, shift_id, ticket_id, number, amount, prize, created_at
+                FROM sales_old_fix
+                WHERE shift_id IN (SELECT id FROM shifts)
+                AND (ticket_id IS NULL OR ticket_id IN (SELECT id FROM tickets))
+            `);
+
+            // 4. Drop OLD tables (Sales FIRST because it depends on Tickets)
+            console.log("Dropping old tables...");
+            await db.execute("DROP TABLE IF EXISTS sales_old_fix");
+            await db.execute("DROP TABLE IF EXISTS tickets_old_fix"); // Now safe to drop
+            
+            // 5. Re-create indexes
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_tickets_shift_id ON tickets(shift_id)");
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_sales_shift_id ON sales(shift_id)");
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_sales_ticket_id ON sales(ticket_id)");
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_sales_shift_number ON sales(shift_id, number)");
+
+            console.log("Foreign Key Repair Completed.");
+        }
+
+    } catch (e) {
+        console.error("FK Repair Failed:", e);
     }
 
     // Seed Config
