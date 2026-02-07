@@ -18,6 +18,14 @@ import { DialogDescription } from '@/components/ui/dialog';
 import { createPortal } from 'react-dom';
 import Ticket from '@/components/Ticket';
 
+import WinnerModal from '@/components/modals/WinnerModal';
+import SalesModal from '@/components/modals/SalesModal';
+import CloseShiftModal from '@/components/modals/CloseShiftModal';
+import ConfirmCloseModal from '@/components/modals/ConfirmCloseModal';
+import VerifyTicketModal from '@/components/modals/VerifyTicketModal';
+import AlertModal from '@/components/modals/AlertModal';
+import ConfigModal from '@/components/modals/ConfigModal';
+
 const Dashboard = () => {
   const navigate = useNavigate();
   // State
