@@ -9,18 +9,14 @@ import { useConfig } from '@/context/ConfigContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 // Removed invalid Badge import from lucide-react
-import { DollarSign, Ticket, Award, Users, Lock, ShoppingCart, Moon, Sun, Settings, History, Trash2, Beaker } from 'lucide-react'; 
+import { DollarSign, Ticket, Award, Users, Lock, ShoppingCart, Moon, Sun, Settings, History, Trash2, Beaker, Printer } from 'lucide-react'; 
 import { cn } from '@/lib/utils';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
-import WinnerModal from '@/components/modals/WinnerModal';
-import SalesModal from '@/components/modals/SalesModal';
-import CloseShiftModal from '@/components/modals/CloseShiftModal';
-import ConfirmCloseModal from '@/components/modals/ConfirmCloseModal';
-import VerifyTicketModal from '@/components/modals/VerifyTicketModal'; // NEW
-import AlertModal from '@/components/modals/AlertModal';
-import ConfigModal from '@/components/modals/ConfigModal';
+import { DialogDescription } from '@/components/ui/dialog';
+import { createPortal } from 'react-dom';
+import Ticket from '@/components/Ticket';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -51,6 +47,10 @@ const Dashboard = () => {
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isVerifyOpen, setIsVerifyOpen] = useState(false); // NEW
   const [winningNumber, setWinningNumber] = useState('');
+
+  // Reprint State
+  const [reprintData, setReprintData] = useState(null);
+  const [reprintingId, setReprintingId] = useState(null);
 
   // Validar Tema
   useEffect(() => {
@@ -145,6 +145,28 @@ const Dashboard = () => {
 
   const handleCloseShiftClick = () => {
     setCloseShiftModalOpen(true);
+  };
+
+  const handleReprint = async (ticketId) => {
+    try {
+      setReprintingId(ticketId);
+      const res = await axios.get(`${API_URL}/tickets/${ticketId}/verify`);
+      if (res.data) {
+        setReprintData(res.data);
+        // Wait for portal to render
+        setTimeout(() => {
+           window.print();
+           // Clear after print
+           setReprintData(null);
+           setReprintingId(null);
+        }, 300);
+      }
+    } catch (err) {
+      console.error("Error reprinting ticket", err);
+      setAlertConfig({ title: "Error", message: "No se pudo recuperar el ticket para imprimir." });
+      setAlertOpen(true);
+      setReprintingId(null);
+    }
   };
 
   const handleFinalizeShift = async (winningNumber) => {
@@ -398,34 +420,58 @@ const Dashboard = () => {
            message={alertConfig.message}
         />
 
-        <Card className="shadow-sm border-0 dark:bg-slate-900/50 dark:border-slate-800">
+         <Card className="shadow-sm border-0 dark:bg-slate-900/50 dark:border-slate-800">
           <CardHeader className="pb-3 border-b dark:border-slate-800">
             <CardTitle className="text-lg flex items-center gap-2 dark:text-white">
-              Ventas Recientes
+              Tickets Recientes
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
              <div className="divide-y dark:divide-slate-800">
-               {recentSales.map((sale) => (
-                 <div key={sale.id} className="p-3 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-between text-sm">
+               {recentSales.map((ticket) => (
+                 <div key={ticket.id} className="p-3 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-between text-sm">
                     <div>
-                      <span className="font-bold text-slate-800 dark:text-slate-200">
-                         {sale.ticket_id ? `Ticket #${sale.ticket_id.split('-')[1]}` : `Venta #${sale.id}`}
-                      </span>
-                      <span className="text-slate-500 mx-1">-</span>
-                      <span className="font-medium text-slate-900 dark:text-green-400">Lps. {sale.amount}</span>
+                      <div className="font-bold text-slate-800 dark:text-slate-200">
+                         Ticket #{ticket.id}
+                      </div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400">
+                        {new Date(ticket.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </div>
                     </div>
-                   <div className="flex items-center gap-2">
-                      <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-xs text-slate-600 dark:text-slate-400">Nu: {sale.number}</span>
-                   </div>
+                    <div className="flex items-center gap-4">
+                       <span className="font-bold text-slate-900 dark:text-green-400">Lps. {ticket.total}</span>
+                       <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="h-8 px-2 text-xs gap-1 border-blue-200 text-blue-600 hover:bg-blue-50 dark:border-slate-700 dark:text-blue-400"
+                          onClick={() => handleReprint(ticket.id)}
+                          disabled={reprintingId === ticket.id}
+                       >
+                          <Printer className="w-3.5 h-3.5" />
+                          {reprintingId === ticket.id ? '...' : 'Imprimir'}
+                       </Button>
+                    </div>
                  </div>
                ))}
                {recentSales.length === 0 && (
-                 <div className="p-4 text-center text-muted-foreground text-sm">No hay ventas recientes</div>
+                 <div className="p-4 text-center text-muted-foreground text-sm">No hay tickets recientes</div>
                )}
              </div>
           </CardContent>
         </Card>
+
+        {reprintData && createPortal(
+            <div id="reprint-portal" className="print:block hidden fixed top-0 left-0 w-full h-full bg-white z-[9999]">
+                <Ticket 
+                    sales={reprintData.sales} 
+                    total={reprintData.ticket.total} 
+                    ticketId={reprintData.ticket.id}
+                    shiftType={reprintData.shift.type} 
+                    multiplier={config?.prize_multiplier || 70}
+                />
+            </div>,
+            document.body
+        )}
       </div>
     </div>
   );

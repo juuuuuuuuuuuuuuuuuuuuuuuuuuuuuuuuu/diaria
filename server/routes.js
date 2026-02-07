@@ -230,7 +230,7 @@ router.get('/dashboard/summary', async (req, res) => {
              const [shiftTotal, clientCount, recent] = await Promise.all([
                  dbGet("SELECT total_sales, ticket_count FROM shifts WHERE id = ?", [activeShiftId]),
                  dbGet("SELECT COUNT(*) as count FROM tickets WHERE shift_id = ?", [activeShiftId]),
-                 dbAll("SELECT * FROM sales WHERE shift_id = ? ORDER BY created_at DESC LIMIT 10", [activeShiftId])
+                 dbAll("SELECT * FROM tickets WHERE shift_id = ? ORDER BY created_at DESC LIMIT 10", [activeShiftId])
              ]);
 
              if (shiftTotal) {
