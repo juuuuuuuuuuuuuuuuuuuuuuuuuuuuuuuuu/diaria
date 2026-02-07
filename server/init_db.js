@@ -133,6 +133,69 @@ async function init() {
         console.error("Migration error (non-critical if table exists):", e);
     }
 
+    // --- MIGRATION: Test Shifts (Schema Change) ---
+    try {
+        // Check if is_test column exists
+        let needsMigration = false;
+        try {
+            await db.execute("SELECT is_test FROM shifts LIMIT 1");
+        } catch (e) {
+            needsMigration = true;
+        }
+
+        if (needsMigration) {
+            console.log("Migrating shifts table for Test Mode...");
+            await db.transaction('write'); // Start transaction if possible, or just sequential
+            
+            // 1. Rename old table
+            await db.execute("ALTER TABLE shifts RENAME TO shifts_old");
+
+            // 2. Create new table (including is_test, new CHECK, and previous alter columns)
+            await db.execute(`
+              CREATE TABLE shifts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                type TEXT CHECK(type IN ('Mañana', 'Tarde', 'Noche', 'Prueba')) NOT NULL,
+                date TEXT NOT NULL,
+                status TEXT CHECK(status IN ('ABIERTO', 'CERRADO', 'FINALIZADO')) DEFAULT 'ABIERTO',
+                winning_number TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                closed_at DATETIME,
+                total_sales INTEGER DEFAULT 0,
+                ticket_count INTEGER DEFAULT 0,
+                is_test INTEGER DEFAULT 0
+              )
+            `);
+
+            // 3. Copy data (Handling missing columns with defaults)
+            // Note: shifts_old has total_sales and ticket_count from previous ALTERS? 
+            // We need to be careful. usage of "SELECT * " relies on column order.
+            // Better to specify columns.
+            
+            // Get columns from shifts_old to construct query dynamically or just assume standard
+            // We know the previous schema state: 
+            // id, type, date, status, winning_number, created_at, closed_at, total_sales, ticket_count (added via ALTER)
+            
+            await db.execute(`
+                INSERT INTO shifts (id, type, date, status, winning_number, created_at, closed_at, total_sales, ticket_count)
+                SELECT id, type, date, status, winning_number, created_at, closed_at, total_sales, ticket_count
+                FROM shifts_old
+            `);
+
+            // 4. Drop old table
+            await db.execute("DROP TABLE shifts_old");
+
+            // 5. Re-create Index
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_shifts_date ON shifts(date)");
+            
+            console.log("Shifts table migration completed.");
+        }
+    } catch (e) {
+        console.error("Test Shift Migration Failed:", e);
+        // If it failed, we might be in a bad state if not transactional. 
+        // But LibSQL via HTTP might not support multi-statement transactions in one go easily without the transaction helper.
+        // Assuming the user runs this local node script which uses local db or http client.
+    }
+
     // Seed Config
     try {
         await db.execute("INSERT INTO config (id) VALUES (1)");

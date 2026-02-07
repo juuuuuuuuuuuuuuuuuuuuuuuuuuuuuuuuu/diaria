@@ -165,6 +165,39 @@ router.put('/config', async (req, res) => {
     }
 });
 
+// DELETE TEST SHIFT
+router.delete('/shifts/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        // 1. Verify it is a test shift
+        const shift = await dbGet("SELECT is_test FROM shifts WHERE id = ?", [id]);
+        if (!shift) {
+            return res.status(404).json({ error: "Turno no encontrado" });
+        }
+        if (!shift.is_test) {
+            return res.status(403).json({ error: "Solo se pueden eliminar turnos de prueba" });
+        }
+
+        // 2. Cascading Delete
+        // Depending on DB foreign keys setup, might happen auto, but usually good to be explicit or use transaction
+        await db.transaction('write'); // Basic transaction wrapper if available in this db client version
+
+        await db.execute("DELETE FROM sales WHERE shift_id = ?", [id]);
+        await db.execute("DELETE FROM tickets WHERE shift_id = ?", [id]);
+        await db.execute("DELETE FROM shift_counters WHERE shift_id = ?", [id]);
+        await db.execute("DELETE FROM shifts WHERE id = ?", [id]);
+        
+        // End transaction (implicit if execute works sequentially without error, or explicit commit needed)
+        
+        res.json({ success: true });
+
+    } catch (e) {
+        console.error("Error deleting test shift:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // --- DASHBOARD SUMMARY (Optimized Batch Fetch) ---
 router.get('/dashboard/summary', async (req, res) => {
     try {

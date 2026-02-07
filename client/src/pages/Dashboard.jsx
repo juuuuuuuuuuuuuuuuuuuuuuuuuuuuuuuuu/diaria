@@ -9,7 +9,7 @@ import { useConfig } from '@/context/ConfigContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 // Removed invalid Badge import from lucide-react
-import { DollarSign, Ticket, Award, Users, Lock, ShoppingCart, Moon, Sun, Settings, History } from 'lucide-react'; // Added History and Ticket
+import { DollarSign, Ticket, Award, Users, Lock, ShoppingCart, Moon, Sun, Settings, History, Trash2, Beaker } from 'lucide-react'; 
 import { cn } from '@/lib/utils';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -163,6 +163,21 @@ const Dashboard = () => {
     }
   };
 
+  const handleDeleteTestShift = async () => {
+    if (!activeShift || !activeShift.is_test) return;
+    if (!window.confirm("¿Estás seguro de ELIMINAR este turno de prueba? Se borrarán todas las ventas y tickets asociados.")) return;
+
+    try {
+      await axios.delete(`${API_URL}/shifts/${activeShift.id}`);
+      setActiveShift(null);
+      fetchData(null);
+      alert("Turno de prueba eliminado correctamente.");
+    } catch (err) {
+      console.error(err);
+      alert("Error al eliminar turno de prueba");
+    }
+  };
+
   const KPICard = ({ title, value, icon: Icon, colorClass }) => (
     <Card className="shadow-sm">
       <CardContent className="p-6 flex flex-col items-center justify-center text-center space-y-2">
@@ -219,18 +234,39 @@ const Dashboard = () => {
         <div className={cn(
             "border rounded-lg p-4 flex items-center gap-3 transition-colors",
             activeShift 
-                ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-300"
-                : "bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400"
+            ? activeShift.is_test 
+                ? "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-300"
+                : "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-300"
+            : "bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400"
         )}>
-           <div className={cn("p-2 rounded-full", activeShift ? "bg-blue-100 dark:bg-blue-900/40" : "bg-slate-200 dark:bg-slate-800")}>
-             <Ticket className={cn("w-5 h-5", activeShift ? "text-blue-600 dark:text-blue-400" : "text-slate-500 dark:text-slate-400")} />
+           <div className={cn("p-2 rounded-full", 
+               activeShift 
+               ? activeShift.is_test 
+                   ? "bg-yellow-100 dark:bg-yellow-900/40"
+                   : "bg-blue-100 dark:bg-blue-900/40" 
+               : "bg-slate-200 dark:bg-slate-800"
+           )}>
+             {activeShift?.is_test ? <Beaker className="w-5 h-5 text-yellow-600 dark:text-yellow-400" /> : <Ticket className={cn("w-5 h-5", activeShift ? "text-blue-600 dark:text-blue-400" : "text-slate-500 dark:text-slate-400")} />}
            </div>
-           <div>
-             <h4 className="font-bold">Turno Activo: {activeShift?.type || 'Ninguno Seleccionado'}</h4>
+           <div className="flex-1">
+             <h4 className="font-bold flex items-center gap-2">
+                 {activeShift?.is_test ? "MODO PRUEBA" : (activeShift ? `Turno Activo: ${activeShift.type}` : 'Ninguno Seleccionado')}
+             </h4>
              <p className="text-sm opacity-80">
                  {activeShift ? 'Listo para vender' : 'Seleccione un turno para comenzar'}
              </p>
            </div>
+           
+           {activeShift?.is_test && (
+               <Button 
+                   size="sm" 
+                   variant="destructive" 
+                   onClick={handleDeleteTestShift}
+                   className="h-8 bg-red-100 text-red-700 hover:bg-red-200 border border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800"
+               >
+                   <Trash2 className="w-4 h-4 mr-1" /> Eliminar Prueba
+               </Button>
+           )}
         </div>
 
         {/* KPI Grid */}
@@ -297,6 +333,17 @@ const Dashboard = () => {
              <Lock className="w-5 h-5 mr-2" /> Cerrar Turno
            </Button>
         </div>
+        
+        {/* Test Shift Button (Only if no active shift) */}
+        {!activeShift && (
+             <Button 
+               variant="ghost" 
+               className="w-full text-sm text-slate-500 hover:text-yellow-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 border border-dashed border-slate-300 dark:border-slate-700 h-10" 
+               onClick={() => handleShiftSelect('Prueba')}
+             >
+                 <Beaker className="w-4 h-4 mr-2" /> Abrir Turno de Prueba
+             </Button>
+        )}
 
         <WinnerModal 
           isOpen={winnerModalOpen} 
