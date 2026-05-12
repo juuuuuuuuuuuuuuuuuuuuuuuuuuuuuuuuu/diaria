@@ -324,8 +324,8 @@ const Dashboard = () => {
            />
            <div className="grid grid-cols-2 gap-4 col-span-2 lg:col-span-3">
               <KPICard 
-                title="Ganancia Estimada (15%)" 
-                value={`Lps. ${((stats.total || 0) * 0.15).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`} 
+                title="Ganancia Estimada (20%)" 
+                value={`Lps. ${((stats.total || 0) * 0.20).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`} 
                 icon={Award}
                 colorClass={{ bg: 'bg-indigo-100', text: 'text-indigo-600' }} 
               />
