@@ -39,6 +39,7 @@ const Dashboard = () => {
 
   const [shiftsStatus, setShiftsStatus] = useState({}); // { Mañana: null, Tarde: {status...}, ...}
   const [activeShift, setActiveShift] = useState(null); // The currently SELECTED shift context
+  const [loadingShift, setLoadingShift] = useState(false);
   
   const [stats, setStats] = useState({ total: 0, count: 0 }); // count now represents Clients
   const [recentSales, setRecentSales] = useState([]);
@@ -110,6 +111,7 @@ const Dashboard = () => {
   };
 
   const handleShiftSelect = async (type) => {
+     if (loadingShift) return;
      const statusObj = shiftsStatus[type];
      
      // Case 1: Already Open -> Select it
@@ -133,14 +135,14 @@ const Dashboard = () => {
      }
 
      // Case 3: Not exists -> Open it
+     setLoadingShift(true);
      try {
        const res = await axios.post(`${API_URL}/shifts/open`, { type });
        if (res.data.success) {
           // Success, now we essentially have it open. 
-          // We need to construct the object or just refetch.
           const newShift = { id: res.data.id, type, status: 'ABIERTO' };
           setActiveShift(newShift);
-          fetchData(newShift.id);
+          await fetchData(newShift.id);
        }
      } catch (err) {
         setAlertConfig({
@@ -148,6 +150,8 @@ const Dashboard = () => {
            message: err.response?.data?.error || "Error al abrir turno"
         });
         setAlertOpen(true);
+     } finally {
+        setLoadingShift(false);
      }
   };
 
@@ -240,9 +244,10 @@ const Dashboard = () => {
              <button
                key={s}
                onClick={() => handleShiftSelect(s)}
-             // ... existing classes ...
+               disabled={loadingShift || isFinalized}
                className={cn(
                  "py-2 px-4 rounded-md text-sm font-medium transition-all border",
+                 loadingShift && "opacity-60 cursor-wait",
                  isSelected
                    ? "bg-white dark:bg-slate-800 border-blue-500 text-blue-700 dark:text-blue-400 shadow-md ring-1 ring-blue-500" 
                    : isOpen
@@ -371,6 +376,7 @@ const Dashboard = () => {
         {!activeShift && (
              <Button 
                variant="ghost" 
+               disabled={loadingShift}
                className="w-full text-sm text-slate-500 hover:text-yellow-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 border border-dashed border-slate-300 dark:border-slate-700 h-10" 
                onClick={() => handleShiftSelect('Prueba')}
              >

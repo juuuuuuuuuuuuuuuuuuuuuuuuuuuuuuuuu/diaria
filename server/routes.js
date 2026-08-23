@@ -22,7 +22,11 @@ const getBusinessDateTime = () => {
     return formatTz(zonedDate, 'yyyy-MM-dd HH:mm:ss', { timeZone: TIMEZONE });
 };
 
-// --- HELPERS ---
+// Global BigInt serializer for JSON.stringify (prevents "Do not know how to serialize a BigInt")
+BigInt.prototype.toJSON = function () {
+    const intVal = Number(this);
+    return Number.isSafeInteger(intVal) ? intVal : this.toString();
+};
 
 // Helper to execute and get first result (simulate .get())
 async function dbGet(sql, args = []) {
@@ -39,7 +43,10 @@ async function dbAll(sql, args = []) {
 // Helper to execute and get info (simulate .run())
 async function dbRun(sql, args = []) {
   const rs = await db.execute({ sql, args });
-  return { lastInsertRowid: rs.lastInsertRowid, changes: rs.rowsAffected };
+  return { 
+    lastInsertRowid: rs.lastInsertRowid !== undefined ? Number(rs.lastInsertRowid) : undefined, 
+    changes: Number(rs.rowsAffected || 0) 
+  };
 }
 
 const getActiveShift = async () => {
@@ -95,7 +102,7 @@ router.post('/users', authenticateToken, async (req, res) => {
     try {
         const hash = bcrypt.hashSync(password, 10);
         const info = await dbRun("INSERT INTO users (username, password) VALUES (?, ?)", [username, hash]);
-        res.json({ success: true, id: info.lastInsertRowid });
+        res.json({ success: true, id: Number(info.lastInsertRowid) });
     } catch (e) {
         res.status(400).json({ error: "El usuario ya existe o error en base de datos." });
     }
@@ -261,33 +268,63 @@ router.get('/shifts/current', async (req, res) => {
 
 router.post('/shifts/open', async (req, res) => {
     const { type } = req.body;
+    
+    // 1. Validar tipo de turno
+    const validTypes = ['Mañana', 'Tarde', 'Noche', 'Prueba'];
+    if (!type || !validTypes.includes(type)) {
+        return res.status(400).json({ error: "Tipo de turno inválido." });
+    }
+
     const today = getBusinessDate();
 
     try {
-        // Check availability
-        const existing = await dbGet("SELECT * FROM shifts WHERE date = ? AND type = ?", [today, type]);
-        
-        if (existing) {
-            if (existing.status === 'ABIERTO') {
-                return res.json({ success: true, id: existing.id, resumed: true });
-            } else {
-                return res.status(400).json({ error: `El turno de la ${type} ya está ${existing.status}.` });
-            }
-        }
-
-        // Check max shifts
-        // Check max shifts (Excluding Test Shifts)
+        // 2. Validaciones para turnos regulares (Mañana, Tarde, Noche)
         if (type !== 'Prueba') {
+            // Verificar si ya existe un turno de este horario en el día
+            const existing = await dbGet("SELECT * FROM shifts WHERE date = ? AND type = ?", [today, type]);
+            
+            if (existing) {
+                if (existing.status === 'ABIERTO') {
+                    // Reanudar turno ya abierto sin duplicar
+                    return res.json({ success: true, id: Number(existing.id), resumed: true });
+                } else {
+                    return res.status(400).json({ 
+                        error: `El turno de la ${type} ya fue cerrado por hoy (${existing.status}). No se pueden crear turnos duplicados.` 
+                    });
+                }
+            }
+
+            // Verificar si hay otro turno regular abierto en este momento
+            const otherOpen = await dbGet("SELECT * FROM shifts WHERE date = ? AND status = 'ABIERTO' AND type != 'Prueba'", [today]);
+            if (otherOpen) {
+                return res.status(400).json({ 
+                    error: `Ya existe un turno abierto (${otherOpen.type}). Debe cerrarlo antes de abrir el turno de la ${type}.` 
+                });
+            }
+
+            // Validar límite diario (máximo 3 turnos regulares por día)
             const shiftsToday = await dbGet("SELECT COUNT(*) as count FROM shifts WHERE date = ? AND type != 'Prueba'", [today]);
-            if (shiftsToday.count >= 3) {
-                return res.status(400).json({ error: "Límite de turnos diarios (3) alcanzado." });
+            if (shiftsToday && Number(shiftsToday.count) >= 3) {
+                return res.status(400).json({ error: "Límite de turnos diarios (3) alcanzado para hoy." });
             }
         }
 
-        const info = await dbRun("INSERT INTO shifts (type, date, status, created_at) VALUES (?, ?, 'ABIERTO', ?)", [type, today, getBusinessDateTime()]);
-        res.json({ success: true, id: info.lastInsertRowid });
+        // 3. Crear nuevo turno
+        const isTest = type === 'Prueba' ? 1 : 0;
+        const now = getBusinessDateTime();
+        const info = await dbRun(
+            "INSERT INTO shifts (type, date, status, created_at, is_test) VALUES (?, ?, 'ABIERTO', ?, ?)", 
+            [type, today, now, isTest]
+        );
+        
+        const newShiftId = Number(info.lastInsertRowid);
+        res.json({ success: true, id: newShiftId });
     } catch (e) {
-        res.status(500).json({ error: e.message });
+        console.error("Error opening shift:", e);
+        if (e.message && e.message.includes("UNIQUE constraint failed")) {
+            return res.status(400).json({ error: `Ya existe un turno registrado para ${type} en el día de hoy.` });
+        }
+        res.status(500).json({ error: e.message || "Error al abrir turno" });
     }
 });
 

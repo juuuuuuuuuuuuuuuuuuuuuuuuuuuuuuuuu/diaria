@@ -293,6 +293,88 @@ async function init() {
         console.error("FK Repair Failed:", e);
     }
 
+    // --- MIGRATION: Deduplicate shifts and enforce UNIQUE constraint ---
+    try {
+        const dupesRs = await db.execute(`
+            SELECT date, type, COUNT(*) as count 
+            FROM shifts 
+            WHERE type != 'Prueba' 
+            GROUP BY date, type 
+            HAVING count > 1
+        `);
+
+        if (dupesRs.rows && dupesRs.rows.length > 0) {
+            console.log(`Found ${dupesRs.rows.length} duplicate shift groups. Consolidating...`);
+            for (const row of dupesRs.rows) {
+                const shiftDate = row.date;
+                const shiftType = row.type;
+
+                const shiftsForGroup = await db.execute({
+                    sql: "SELECT * FROM shifts WHERE date = ? AND type = ? ORDER BY id ASC",
+                    args: [shiftDate, shiftType]
+                });
+
+                const rows = shiftsForGroup.rows;
+                if (rows.length > 1) {
+                    // Pick primary: prefer one with total_sales > 0, otherwise the latest (highest ID)
+                    const primary = rows.slice().sort((a, b) => (Number(b.total_sales) || 0) - (Number(a.total_sales) || 0) || Number(b.id) - Number(a.id))[0];
+                    const duplicates = rows.filter(r => r.id !== primary.id);
+
+                    for (const dup of duplicates) {
+                        console.log(`Consolidating duplicate shift ID ${dup.id} into primary shift ID ${primary.id} (${shiftDate} - ${shiftType})`);
+                        await db.execute({
+                            sql: "UPDATE tickets SET shift_id = ? WHERE shift_id = ?",
+                            args: [primary.id, dup.id]
+                        });
+                        await db.execute({
+                            sql: "UPDATE sales SET shift_id = ? WHERE shift_id = ?",
+                            args: [primary.id, dup.id]
+                        });
+                        await db.execute({
+                            sql: "DELETE FROM shift_counters WHERE shift_id = ?",
+                            args: [dup.id]
+                        });
+                        await db.execute({
+                            sql: "DELETE FROM shifts WHERE id = ?",
+                            args: [dup.id]
+                        });
+                    }
+
+                    // Recalculate counters and totals for primary shift
+                    await db.execute({
+                        sql: "DELETE FROM shift_counters WHERE shift_id = ?",
+                        args: [primary.id]
+                    });
+                    await db.execute({
+                        sql: `INSERT INTO shift_counters (shift_id, number, amount, count)
+                              SELECT shift_id, number, SUM(amount), COUNT(*)
+                              FROM sales
+                              WHERE shift_id = ?
+                              GROUP BY shift_id, number`,
+                        args: [primary.id]
+                    });
+                    const totalRs = await db.execute({
+                        sql: "SELECT IFNULL(SUM(amount), 0) as total, (SELECT COUNT(*) FROM tickets WHERE shift_id = ?) as ticket_count FROM sales WHERE shift_id = ?",
+                        args: [primary.id, primary.id]
+                    });
+                    const newTotal = totalRs.rows[0]?.total || 0;
+                    const newTicketCount = totalRs.rows[0]?.ticket_count || 0;
+                    await db.execute({
+                        sql: "UPDATE shifts SET total_sales = ?, ticket_count = ? WHERE id = ?",
+                        args: [newTotal, newTicketCount, primary.id]
+                    });
+                }
+            }
+            console.log("Shifts consolidation completed.");
+        }
+
+        // Create UNIQUE index for regular shifts per date
+        await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_shifts_date_type_unique ON shifts(date, type) WHERE type != 'Prueba'");
+        console.log("Unique shift index ensured.");
+    } catch (e) {
+        console.error("Shifts deduplication / unique index error:", e);
+    }
+
     // Seed Config
     try {
         await db.execute("INSERT INTO config (id) VALUES (1)");

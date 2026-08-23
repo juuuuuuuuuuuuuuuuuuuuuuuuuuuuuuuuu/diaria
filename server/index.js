@@ -1,3 +1,9 @@
+// Global BigInt serializer for JSON.stringify (prevents "Do not know how to serialize a BigInt")
+BigInt.prototype.toJSON = function () {
+    const intVal = Number(this);
+    return Number.isSafeInteger(intVal) ? intVal : this.toString();
+};
+
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
