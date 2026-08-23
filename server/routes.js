@@ -294,14 +294,6 @@ router.post('/shifts/open', async (req, res) => {
                 }
             }
 
-            // Verificar si hay otro turno regular abierto en este momento
-            const otherOpen = await dbGet("SELECT * FROM shifts WHERE date = ? AND status = 'ABIERTO' AND type != 'Prueba'", [today]);
-            if (otherOpen) {
-                return res.status(400).json({ 
-                    error: `Ya existe un turno abierto (${otherOpen.type}). Debe cerrarlo antes de abrir el turno de la ${type}.` 
-                });
-            }
-
             // Validar límite diario (máximo 3 turnos regulares por día)
             const shiftsToday = await dbGet("SELECT COUNT(*) as count FROM shifts WHERE date = ? AND type != 'Prueba'", [today]);
             if (shiftsToday && Number(shiftsToday.count) >= 3) {
